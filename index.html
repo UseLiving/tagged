@@ -1,0 +1,622 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="description" content="TAGGED: social trading on Solana. Launch a token on pump.fun from your wallet, get a live room with chart and trades, and post about it on X.">
+<meta name="theme-color" content="#08090c">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10' shape-rendering='crispEdges'%3E%3Crect width='10' height='10' fill='%2308090c'/%3E%3Crect x='0' y='2' width='7' height='6' fill='%2338f2ff'/%3E%3Crect x='7' y='3' width='1' height='4' fill='%2338f2ff'/%3E%3Crect x='8' y='4' width='1' height='2' fill='%2338f2ff'/%3E%3Crect x='2' y='4' width='2' height='2' fill='%2308090c'/%3E%3C/svg%3E">
+<title>TAGGED</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Silkscreen:wght@400;700&family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* layout: a three-column social trading app (nav rail / feed / market rail), like an X client for tokens. everything shown is live: launches stream from PumpPortal, markets from DexScreener, launches and trades are signed by the visitor's own Solana wallet */
+:root{
+  color-scheme:dark;
+  --bg:#08090c;--pan:#0f1116;--pan2:#151821;--line:#1d212b;--line2:#2a303d;
+  --ink:#eaf0f6;--mut:#8a94a6;--dim:#596273;
+  --acc:#38f2ff;--acc2:#8f7bff;--up:#35e08a;--dn:#ff5470;--warn:#ffc04d;
+  --disp:'Silkscreen','Courier New',monospace;--body:'Manrope',system-ui,sans-serif;--mono:'JetBrains Mono',ui-monospace,monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{background:var(--bg);color:var(--ink);font-family:var(--body);overflow-x:hidden}
+button,input,select,textarea{font:inherit;color:inherit;background:none;border:0}
+button{cursor:pointer}
+button:disabled{cursor:not-allowed;opacity:.5}
+a{color:inherit;text-decoration:none}
+::selection{background:var(--acc);color:#001518}
+#bgc{position:fixed;inset:0;width:100%;height:100%;z-index:0;pointer-events:none;image-rendering:pixelated}
+.app{position:relative;z-index:1;display:grid;grid-template-columns:240px minmax(0,640px) 330px;justify-content:center;min-height:100vh}
+.mono{font-family:var(--mono)}
+.up{color:var(--up)}.dn{color:var(--dn)}
+
+/* left rail */
+.rail{position:sticky;top:0;height:100vh;padding:20px 16px;display:flex;flex-direction:column;gap:6px;border-right:1px solid var(--line)}
+.logo{display:flex;align-items:center;gap:10px;font-family:var(--disp);font-weight:700;font-size:22px;padding:6px 10px 18px;letter-spacing:.02em}
+.logo svg{display:block}
+.nv{display:flex;align-items:center;gap:12px;padding:10px 12px;font-weight:600;font-size:15px;color:var(--mut);border:1px solid transparent;transition:background .15s,color .15s}
+.nv svg{width:18px;height:18px;flex:none}
+.nv:hover{color:var(--ink);background:var(--pan)}
+.nv.on{color:var(--ink);background:rgba(56,242,255,.07);border-color:rgba(56,242,255,.35)}
+.nv .ct{margin-left:auto;font-family:var(--mono);font-size:11px;color:var(--acc)}
+.cta{margin-top:14px;display:flex;align-items:center;justify-content:center;gap:8px;padding:13px;background:var(--acc);color:#001518;font-weight:800;font-size:15px;position:relative;overflow:hidden;transition:transform .1s}
+.cta::after{content:"";position:absolute;inset:0;background:linear-gradient(110deg,transparent 30%,rgba(255,255,255,.5) 50%,transparent 70%);transform:translateX(-100%);animation:sh 3.5s infinite}
+@keyframes sh{60%,100%{transform:translateX(100%)}}
+.cta:active{transform:translateY(1px)}
+.rail .sp{flex:1}
+.me{border:1px solid var(--line2);background:var(--pan);padding:10px 12px;display:flex;align-items:center;gap:10px;font-size:13px}
+.me .av{width:34px;height:34px}
+.me b{display:block;font-family:var(--mono);font-size:13px}
+.me small{color:var(--mut);font-family:var(--mono);font-size:11.5px}
+.signin{display:flex;align-items:center;justify-content:center;gap:8px;padding:12px;border:1px solid var(--line2);background:var(--pan);font-weight:700;font-size:14px}
+.signin:hover{border-color:var(--acc)}
+.signin svg{width:16px;height:16px;flex:none}
+
+/* center */
+.main{border-right:1px solid var(--line);min-height:100vh;background:rgba(8,9,12,.82)}
+.mh{position:sticky;top:0;z-index:20;background:rgba(8,9,12,.92);backdrop-filter:blur(8px);border-bottom:1px solid var(--line)}
+.mh .t{display:flex;align-items:center;justify-content:space-between;padding:16px 20px 10px}
+.mh h1{font-family:var(--disp);font-weight:700;font-size:24px;letter-spacing:.02em}
+.live{display:inline-flex;align-items:center;gap:6px;font-family:var(--mono);font-size:11.5px;color:var(--mut);border:1px solid var(--line2);padding:3px 9px}
+.live i{width:7px;height:7px;background:var(--up);border-radius:50%;box-shadow:0 0 8px var(--up);animation:pl 1.4s infinite}
+.live.off i{background:var(--dn);box-shadow:0 0 8px var(--dn)}
+@keyframes pl{50%{opacity:.3}}
+.tabs{display:flex;padding:0 20px}
+.tab{padding:10px 2px;margin-right:22px;font-weight:700;font-size:14px;color:var(--mut);border-bottom:2px solid transparent}
+.tab.on{color:var(--ink);border-color:var(--acc)}
+.sec-h{display:flex;justify-content:space-between;align-items:center;padding:16px 20px 10px}
+.sec-h h2{font-family:var(--disp);font-weight:700;font-size:17px;letter-spacing:.02em}
+.sec-h a,.sec-h button{font-size:12.5px;font-weight:700;color:var(--acc)}
+.trend{display:flex;gap:12px;overflow-x:auto;padding:0 20px 18px;scrollbar-width:none;border-bottom:1px solid var(--line)}
+.tc{flex:none;width:176px;border:1px solid var(--line2);background:linear-gradient(160deg,var(--pan2),var(--pan));padding:14px;position:relative;overflow:hidden;transition:transform .2s,border-color .2s}
+.tc:hover{transform:translateY(-3px);border-color:var(--acc)}
+.tc::before{content:"";position:absolute;right:-20px;top:-20px;width:70px;height:70px;background:radial-gradient(var(--acc) 1px,transparent 1.5px) 0 0/6px 6px;opacity:.25}
+.tc .av{width:40px;height:40px;margin-bottom:12px}
+.tc b{display:block;font-size:14.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tc small{display:block;font-family:var(--mono);font-size:11.5px;color:var(--mut);margin:2px 0 8px}
+.tc .pr{font-family:var(--mono);font-size:12.5px;display:flex;gap:8px}
+.av{border:1px solid var(--line2);background:var(--pan2);display:grid;place-items:center;font-family:var(--disp);font-weight:700;color:var(--acc);overflow:hidden;flex:none}
+.av img{width:100%;height:100%;object-fit:cover;display:block}
+/* post cards */
+.post{display:grid;grid-template-columns:44px minmax(0,1fr);gap:12px;padding:16px 20px;border-bottom:1px solid var(--line);transition:background .15s;cursor:pointer}
+.post:hover{background:rgba(255,255,255,.015)}
+.post.new{animation:pin .5s cubic-bezier(.2,.8,.2,1)}
+@keyframes pin{from{opacity:0;transform:translateY(-10px);background:rgba(56,242,255,.08)}}
+.post .av{width:44px;height:44px;font-size:18px}
+.ph{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
+.ph b{font-family:var(--disp);font-weight:700;font-size:15px;letter-spacing:.02em}
+.ph .tk{font-family:var(--mono);font-size:12.5px;color:var(--mut)}
+.ph .tm{margin-left:auto;font-size:12px;color:var(--dim);font-family:var(--mono)}
+.badge{font-family:var(--mono);font-size:10.5px;padding:1px 6px;border:1px solid var(--acc);color:var(--acc)}
+.badge.mine{border-color:var(--warn);color:var(--warn)}
+.post p{font-size:14.5px;line-height:1.5;color:#c9d1dc;margin:6px 0 10px;word-break:break-word}
+.post .stats{display:flex;gap:16px;flex-wrap:wrap;font-family:var(--mono);font-size:12.5px;color:var(--mut);margin-bottom:10px}
+.post .stats b{color:var(--ink);font-weight:500}
+.acts{display:flex;gap:6px;flex-wrap:wrap}
+.ab{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:700;padding:6px 10px;border:1px solid var(--line2);color:var(--mut);transition:all .15s}
+.ab:hover{color:var(--ink);border-color:var(--mut)}
+.ab.pri{border-color:var(--acc);color:var(--acc)}
+.ab.pri:hover{background:var(--acc);color:#001518}
+.ab.on{border-color:var(--warn);color:var(--warn)}
+.ab svg{width:14px;height:14px}
+.empty{padding:40px 24px;text-align:center;color:var(--mut);font-size:14.5px;line-height:1.6}
+.empty b{color:var(--ink)}
+.err{margin:16px 20px;padding:12px 14px;border:1px solid var(--dn);background:rgba(255,84,112,.07);color:#ffc2cc;font-size:13.5px;line-height:1.5}
+.skel{height:84px;margin:12px 20px;background:linear-gradient(90deg,var(--pan) 25%,var(--pan2) 50%,var(--pan) 75%);background-size:300% 100%;animation:sk 1.4s infinite}
+@keyframes sk{to{background-position:-150% 0}}
+.loadmore{display:block;margin:14px auto 24px;font-size:13px;font-weight:700;color:var(--acc)}
+
+/* right rail */
+.side{position:sticky;top:0;height:100vh;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:14px;scrollbar-width:none}
+.srch{display:flex;align-items:center;gap:8px;border:1px solid var(--line2);background:var(--pan);padding:10px 12px}
+.srch input{flex:1;outline:0;font-size:14px}
+.srch svg{width:15px;height:15px;color:var(--mut)}
+.box{border:1px solid var(--line2);background:var(--pan)}
+.box h3{display:flex;justify-content:space-between;align-items:center;padding:12px 14px;font-family:var(--disp);font-weight:700;font-size:16px;border-bottom:1px solid var(--line)}
+.box h3 small{font-family:var(--mono);font-weight:400;font-size:11px;color:var(--mut)}
+.rr{display:grid;grid-template-columns:18px 30px minmax(0,1fr) auto;gap:10px;align-items:center;padding:9px 14px;border-bottom:1px solid var(--line);cursor:pointer;font-size:13px}
+.rr:last-child{border-bottom:0}
+.rr:hover{background:var(--pan2)}
+.rr .n{font-family:var(--mono);color:var(--dim);font-size:12px}
+.rr .av{width:30px;height:30px;font-size:12px}
+.rr b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:13.5px}
+.rr small{font-family:var(--mono);font-size:11px;color:var(--mut)}
+.rr .v{text-align:right;font-family:var(--mono);font-size:12px}
+.rr .v b{font-size:12.5px;font-weight:500}
+.sol{display:flex;justify-content:space-between;padding:12px 14px;font-family:var(--mono);font-size:13px}
+.foot{font-size:12px;color:var(--dim);line-height:1.6;padding:0 4px}
+.foot a{color:var(--mut)}
+
+/* explore & board */
+.grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;padding:16px 20px}
+.gc{border:1px solid var(--line2);background:var(--pan);padding:14px;cursor:pointer;transition:border-color .2s,transform .2s;display:flex;flex-direction:column;gap:10px;min-width:0}
+.gc:hover{border-color:var(--acc);transform:translateY(-2px)}
+.gc .top{display:flex;gap:10px;align-items:center;min-width:0}
+.gc .av{width:42px;height:42px}
+.gc b{display:block;font-size:14.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.gc small{font-family:var(--mono);font-size:11.5px;color:var(--mut)}
+.gc p{font-size:13px;color:var(--mut);line-height:1.45;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.gc .kv{display:flex;justify-content:space-between;font-family:var(--mono);font-size:12px}
+.searchbar{display:flex;gap:8px;padding:14px 20px;border-bottom:1px solid var(--line)}
+.searchbar input{flex:1;border:1px solid var(--line2);background:var(--pan);padding:11px 13px;outline:0;font-size:14.5px}
+.searchbar input:focus{border-color:var(--acc)}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;font-weight:800;font-size:14px;padding:11px 18px;border:1px solid var(--line2);background:var(--pan2);transition:all .15s}
+.btn:hover{border-color:var(--ink)}
+.btn.pri{background:var(--acc);color:#001518;border-color:var(--acc)}
+.btn.pri:hover{filter:brightness(1.1)}
+.btn.buy{background:var(--up);border-color:var(--up);color:#00170b}
+.btn.sell{background:var(--dn);border-color:var(--dn);color:#22030a}
+table{width:100%;border-collapse:collapse}
+th{text-align:left;font-size:11.5px;color:var(--dim);font-weight:600;padding:10px 12px;border-bottom:1px solid var(--line);font-family:var(--mono)}
+td{padding:11px 12px;border-bottom:1px solid var(--line);font-size:13.5px;font-family:var(--mono)}
+tr.cl{cursor:pointer}tr.cl:hover td{background:var(--pan)}
+td .nm{display:flex;align-items:center;gap:10px;font-family:var(--body)}
+td .nm .av{width:30px;height:30px;font-size:12px}
+td .nm b{font-size:13.5px}
+.rk{color:var(--dim)}
+.rk.g{color:var(--acc);font-weight:600}
+
+/* launchpad */
+.lp{padding:18px 20px 40px;display:flex;flex-direction:column;gap:16px}
+.eyebrow{font-family:var(--mono);font-size:11.5px;color:var(--acc);letter-spacing:.12em}
+.prev{border:1px solid var(--acc);background:linear-gradient(150deg,rgba(56,242,255,.07),var(--pan) 60%);position:relative;overflow:hidden}
+.prev .pt{display:flex;gap:16px;align-items:center;padding:18px}
+.prev .av{width:76px;height:76px;font-size:30px;border-color:var(--acc)}
+.prev h3{font-family:var(--disp);font-weight:700;font-size:22px;line-height:1.1;word-break:break-word}
+.prev h3 span{color:var(--mut);font-weight:400}
+.prev p{font-size:13.5px;color:var(--mut);margin-top:5px;line-height:1.45;word-break:break-word}
+.prev .pk{display:grid;grid-template-columns:repeat(3,1fr);border-top:1px solid var(--line2)}
+.prev .pk div{padding:11px;text-align:center;border-right:1px solid var(--line2);font-size:11.5px;color:var(--mut)}
+.prev .pk div:last-child{border-right:0}
+.prev .pk b{display:block;font-family:var(--mono);font-size:14px;color:var(--ink);margin-top:3px}
+.prev .scan{position:absolute;left:0;right:0;height:40px;background:linear-gradient(transparent,rgba(56,242,255,.08),transparent);animation:scan 4s linear infinite;pointer-events:none}
+@keyframes scan{from{top:-40px}to{top:100%}}
+details.how{border:1px solid var(--line2);background:var(--pan)}
+details.how summary{padding:13px 16px;font-family:var(--disp);font-weight:700;font-size:14px;cursor:pointer;list-style:none;display:flex;justify-content:space-between}
+details.how summary::after{content:"+";color:var(--acc)}
+details.how[open] summary::after{content:"−"}
+details.how div{padding:0 16px 16px;font-size:13.5px;color:var(--mut);line-height:1.65}
+details.how b{color:var(--ink)}
+.step{border:1px solid var(--line2);background:var(--pan);padding:18px}
+.sh{display:flex;gap:12px;align-items:flex-start;margin-bottom:14px}
+.sh .no{font-family:var(--mono);font-size:12px;color:#001518;background:var(--acc);padding:3px 7px;font-weight:600}
+.sh h3{font-family:var(--disp);font-weight:700;font-size:17px}
+.sh p{font-size:13px;color:var(--mut);margin-top:3px}
+.opts{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.opt{text-align:left;border:1px solid var(--line2);padding:14px;position:relative;transition:border-color .15s,background .15s}
+.opt.on{border-color:var(--acc);background:rgba(56,242,255,.06)}
+.opt.on::after{content:"✓";position:absolute;right:12px;top:10px;color:var(--acc);font-weight:800}
+.opt small{font-family:var(--mono);font-size:11px;color:var(--mut)}
+.opt b{display:block;font-family:var(--disp);font-weight:700;font-size:15px;margin:4px 0}
+.opt span{font-size:12.5px;color:var(--mut);line-height:1.45}
+.fl{margin-bottom:12px}
+.fl label{display:flex;justify-content:space-between;font-size:12.5px;font-weight:700;color:var(--mut);margin-bottom:6px}
+.fl label small{font-family:var(--mono);font-weight:400}
+.in{width:100%;border:1px solid var(--line2);background:var(--bg);padding:11px 12px;font-size:14.5px;outline:0;transition:border-color .15s}
+.in:focus{border-color:var(--acc)}
+textarea.in{resize:vertical;min-height:84px;line-height:1.5}
+.f2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.drop{border:1px dashed var(--line2);padding:16px;display:flex;gap:14px;align-items:center;cursor:pointer;transition:border-color .15s}
+.drop:hover,.drop.over{border-color:var(--acc)}
+.drop .av{width:64px;height:64px;font-size:24px}
+.drop b{font-size:14px}
+.drop small{display:block;font-size:12px;color:var(--mut);margin-top:3px;line-height:1.4}
+.rg{display:flex;align-items:center;gap:12px}
+.rg input[type=range]{flex:1;accent-color:var(--acc)}
+.rg output{font-family:var(--mono);font-size:13px;min-width:120px;text-align:right}
+.note{font-size:12.5px;color:var(--mut);line-height:1.55}
+.note b{color:var(--ink)}
+.launchbar{position:sticky;bottom:0;background:rgba(8,9,12,.95);border-top:1px solid var(--line);padding:14px 20px;display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap}
+.launchbar .note{max-width:52ch}
+/* progress modal */
+#modal{position:fixed;inset:0;z-index:80;background:rgba(3,4,6,.78);backdrop-filter:blur(4px);display:none;align-items:center;justify-content:center;padding:16px}
+#modal.on{display:flex}
+.mbox{width:min(480px,100%);max-height:92vh;overflow-y:auto;border:1px solid var(--line2);background:var(--pan);padding:24px;position:relative;animation:mi .3s cubic-bezier(.2,.8,.2,1)}
+@keyframes mi{from{opacity:0;transform:translateY(14px)}}
+.mbox h3{font-family:var(--disp);font-weight:700;font-size:21px;margin-bottom:8px}
+.mbox p{font-size:13.5px;color:var(--mut);line-height:1.55}
+.mx{position:absolute;right:14px;top:10px;font-size:22px;color:var(--mut)}
+.wl{display:flex;flex-direction:column;gap:8px;margin:16px 0}
+.wl button,.wl a{display:flex;align-items:center;justify-content:space-between;padding:13px 14px;border:1px solid var(--line2);font-weight:700;font-size:14.5px;transition:border-color .15s}
+.wl button:hover,.wl a:hover{border-color:var(--acc)}
+.wl span{font-family:var(--mono);font-size:11.5px;font-weight:400;color:var(--mut)}
+.wl span.ok{color:var(--up)}
+.steps{display:flex;flex-direction:column;gap:2px;margin:16px 0}
+.st{display:grid;grid-template-columns:22px 1fr;gap:10px;align-items:flex-start;padding:8px 0;font-size:13.5px;color:var(--dim)}
+.st i{width:18px;height:18px;border:1px solid var(--line2);display:grid;place-items:center;font-style:normal;font-size:11px;margin-top:1px}
+.st.run{color:var(--ink)}.st.run i{border-color:var(--acc);animation:spin 1s steps(8) infinite}
+.st.ok{color:var(--ink)}.st.ok i{background:var(--up);border-color:var(--up);color:#00170b}
+.st.bad{color:#ffc2cc}.st.bad i{background:var(--dn);border-color:var(--dn);color:#22030a}
+.st small{display:block;font-family:var(--mono);font-size:11.5px;color:var(--mut);margin-top:2px;word-break:break-all}
+@keyframes spin{to{transform:rotate(360deg)}}
+.reslinks{display:flex;flex-direction:column;gap:8px;margin-top:14px}
+.ca{display:flex;align-items:center;gap:8px;border:1px solid var(--line2);background:var(--bg);padding:9px 11px;font-family:var(--mono);font-size:12px;word-break:break-all}
+.ca button{flex:none;font-family:var(--body);font-weight:700;font-size:12px;color:var(--acc)}
+
+/* token room */
+.room-h{display:flex;gap:14px;align-items:center;padding:18px 20px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.room-h .av{width:60px;height:60px;font-size:24px}
+.room-h h2{font-family:var(--disp);font-weight:700;font-size:22px;line-height:1.1}
+.room-h small{font-family:var(--mono);font-size:12.5px;color:var(--mut)}
+.room-h .px{margin-left:auto;text-align:right;font-family:var(--mono)}
+.room-h .px b{display:block;font-size:20px;font-weight:500}
+.kvs{display:grid;grid-template-columns:repeat(4,1fr);border-bottom:1px solid var(--line)}
+.kvs div{padding:11px 14px;border-right:1px solid var(--line);font-size:11.5px;color:var(--mut)}
+.kvs div:last-child{border-right:0}
+.kvs b{display:block;font-family:var(--mono);font-size:14px;color:var(--ink);font-weight:500;margin-top:2px}
+.chart{height:420px;border-bottom:1px solid var(--line);background:var(--pan);position:relative}
+.chart iframe{width:100%;height:100%;border:0;display:block}
+.chart .none{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;color:var(--mut);font-size:14px;text-align:center;padding:20px}
+.rg2{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);border-bottom:1px solid var(--line)}
+.rg2>div{padding:16px 20px;border-right:1px solid var(--line);min-width:0}
+.rg2>div:last-child{border-right:0}
+.rg2 h4{font-family:var(--disp);font-weight:700;font-size:14px;margin-bottom:10px}
+.bs{display:grid;grid-template-columns:1fr 1fr;border:1px solid var(--line2);margin-bottom:10px}
+.bs button{padding:9px;font-weight:800;font-size:13.5px;color:var(--mut)}
+.bs button.on.b{background:var(--up);color:#00170b}.bs button.on.s{background:var(--dn);color:#22030a}
+.pre{display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap}
+.pre button{flex:1;font-family:var(--mono);font-size:12px;padding:6px 4px;border:1px solid var(--line2);color:var(--mut)}
+.pre button:hover{border-color:var(--acc);color:var(--ink)}
+.trades{max-height:260px;overflow-y:auto;font-family:var(--mono);font-size:12px;scrollbar-width:thin}
+.trades>div:not(.empty){display:grid;grid-template-columns:44px 1fr auto;gap:8px;padding:6px 0;border-bottom:1px solid var(--line)}
+.trades>div.new{animation:pin .5s}
+.compose textarea{width:100%;min-height:90px;border:1px solid var(--line2);background:var(--bg);padding:11px;outline:0;font-size:14px;line-height:1.5;resize:vertical}
+.compose textarea:focus{border-color:var(--acc)}
+.compose .row{display:flex;justify-content:space-between;align-items:center;margin-top:8px;gap:8px;flex-wrap:wrap}
+.compose small{font-family:var(--mono);font-size:11.5px;color:var(--mut)}
+
+/* docs */
+.doc{padding:18px 20px 40px;font-size:14.5px;line-height:1.7;color:#c9d1dc}
+.doc h3{font-family:var(--disp);font-weight:700;font-size:17px;color:var(--ink);margin:22px 0 8px}
+.doc p,.doc li{margin-bottom:8px}
+.doc ul{padding-left:20px}
+.doc b{color:var(--ink)}
+.doc code{font-family:var(--mono);font-size:13px;background:var(--pan2);padding:1px 5px}
+.doc a{color:var(--acc)}
+
+/* toasts + mobile nav */
+#toasts{position:fixed;right:16px;bottom:16px;z-index:95;display:flex;flex-direction:column;gap:8px;align-items:flex-end;pointer-events:none}
+.toast{background:var(--pan2);border:1px solid var(--line2);border-left:3px solid var(--acc);padding:11px 14px;font-size:13.5px;max-width:360px;box-shadow:0 14px 40px rgba(0,0,0,.6);animation:mi .25s;pointer-events:auto;line-height:1.45}
+.toast.bad{border-left-color:var(--dn)}.toast.ok{border-left-color:var(--up)}
+.toast a{color:var(--acc);text-decoration:underline}
+#confetti{position:fixed;inset:0;z-index:90;pointer-events:none;width:100%;height:100%}
+.mnav{display:none}
+@media (max-width:1180px){.app{grid-template-columns:84px minmax(0,640px) 300px}.rail .lbl,.logo span,.nv .ct{display:none}.nv{justify-content:center}.cta span,.signin span{display:none}.me div{display:none}}
+@media (max-width:960px){.app{grid-template-columns:84px minmax(0,1fr)}.side{display:none}}
+@media (max-width:640px){
+  .app{grid-template-columns:1fr}
+  .rail{display:none}
+  .main{border-right:0;padding-bottom:64px}
+  .mnav{display:flex;position:fixed;left:0;right:0;bottom:0;z-index:60;background:rgba(8,9,12,.97);border-top:1px solid var(--line);justify-content:space-around;padding:6px 0 calc(6px + env(safe-area-inset-bottom))}
+  .mnav a{display:flex;flex-direction:column;align-items:center;gap:3px;font-size:10.5px;font-weight:700;color:var(--mut);padding:4px 8px}
+  .mnav a.on{color:var(--acc)}
+  .mnav svg{width:20px;height:20px}
+  .mh .t{padding:14px 16px 8px}
+  .mtop{display:flex!important}
+  .grid{grid-template-columns:1fr}
+  .opts,.f2{grid-template-columns:1fr}
+  .kvs{grid-template-columns:1fr 1fr}
+  .kvs div:nth-child(2){border-right:0}.kvs div:nth-child(-n+2){border-bottom:1px solid var(--line)}
+  .rg2{grid-template-columns:1fr}.rg2>div{border-right:0;border-bottom:1px solid var(--line)}
+  .chart{height:340px}
+  .post{padding:14px 16px}
+  .hide-m{display:none}
+}
+.mtop{display:none;align-items:center;gap:8px}
+@media (prefers-reduced-motion:reduce){*{animation-duration:.01ms!important;animation-iteration-count:1!important;transition:none!important}}
+</style>
+</head>
+<body>
+
+
+<canvas id="bgc"></canvas>
+<div class="app">
+  <aside class="rail">
+    <a class="logo" href="#/"><svg width="30" height="30" viewBox="0 0 10 10" shape-rendering="crispEdges" aria-hidden="true"><rect x="0" y="2" width="7" height="6" fill="#38f2ff"/><rect x="7" y="3" width="1" height="4" fill="#38f2ff"/><rect x="8" y="4" width="1" height="2" fill="#38f2ff"/><rect x="2" y="4" width="2" height="2" fill="#08090c"/><rect x="0" y="2" width="1" height="1" fill="#8f7bff"/></svg><span>TAGGED</span></a>
+    <nav id="nav"></nav>
+    <a class="cta" href="#/launch"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M12 5v14M5 12h14"/></svg><span>Launch a token</span></a>
+    <div class="sp"></div>
+    <div id="acct"></div>
+  </aside>
+
+  <main class="main">
+    <div id="view"></div>
+  </main>
+
+  <aside class="side">
+    <form class="srch" id="sform"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><input id="sq" placeholder="Search tokens, tickers or paste a mint" aria-label="Search"></form>
+    <div class="box"><h3>TOP 10<small id="topT">DexScreener · live</small></h3><div id="top10"><div class="skel" style="margin:12px"></div></div></div>
+    <div class="box"><h3>JUST LAUNCHED<small id="justN">pump.fun</small></h3><div id="just"><div class="skel" style="margin:12px"></div></div></div>
+    <div class="box"><div class="sol"><span>SOL</span><b id="solp">—</b></div></div>
+    <p class="foot">Live data from PumpPortal, DexScreener and Jupiter. Launches and trades are signed by your own wallet. Memecoins are extremely risky; nothing here is financial advice. <a href="#/docs">How it works</a></p>
+  </aside>
+</div>
+<nav class="mnav" id="mnav"></nav>
+<div id="modal"><div class="mbox" id="mbox"></div></div>
+<div id="toasts"></div>
+<canvas id="confetti"></canvas>
+
+<script>
+/* ======================= utilities ======================= */
+const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+const short=(a,n=4)=>a?a.slice(0,n)+'…'+a.slice(-n):'';
+const usd=v=>v==null||isNaN(v)?'—':'$'+(v>=1e9?(v/1e9).toFixed(2)+'B':v>=1e6?(v/1e6).toFixed(2)+'M':v>=1e3?(v/1e3).toFixed(1)+'K':v>=1?v.toFixed(2):v.toPrecision(3));
+const pct=v=>v==null||isNaN(v)?'—':(v>=0?'+':'')+Number(v).toFixed(1)+'%';
+const ago=t=>{const s=Math.max(0,(Date.now()-t)/1000);return s<60?Math.floor(s)+'s':s<3600?Math.floor(s/60)+'m':s<86400?Math.floor(s/3600)+'h':Math.floor(s/86400)+'d'};
+const store={get(k,d){try{const v=localStorage.getItem('tagged_'+k);return v?JSON.parse(v):d}catch(e){return d}},set(k,v){try{localStorage.setItem('tagged_'+k,JSON.stringify(v))}catch(e){}}};
+function toast(h,k=''){const d=document.createElement('div');d.className='toast '+k;d.innerHTML=h;$('#toasts').appendChild(d);setTimeout(()=>{d.style.transition='opacity .4s';d.style.opacity=0;setTimeout(()=>d.remove(),400)},k==='bad'?7000:4200)}
+const SITE=location.origin+location.pathname;
+const API={
+  pp:'https://pumpportal.fun/api/trade-local',ws:'wss://pumpportal.fun/api/data',
+  dex:'https://api.dexscreener.com',rpc:'https://solana-rpc.publicnode.com',
+  jup:'https://lite-api.jup.ag/price/v3?ids=So11111111111111111111111111111111111111112',
+  w3:'https://cdn.jsdelivr.net/npm/@solana/web3.js@1.95.3/+esm',
+  turbo:'https://cdn.jsdelivr.net/npm/@ardrive/turbo-sdk@1.23.1/bundles/web.bundle.min.js',
+  bs58:'https://cdn.jsdelivr.net/npm/bs58@6.0.0/+esm',gw:'https://turbo-gateway.com/'};
+const LIB={};
+const lib=async k=>LIB[k]||(LIB[k]=await import(API[k]));
+async function getJSON(u,o){const r=await fetch(u,o);if(!r.ok)throw new Error(r.status+' '+r.statusText);return r.json()}
+async function rpc(method,params){const j=await getJSON(API.rpc,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({jsonrpc:'2.0',id:1,method,params})});if(j.error)throw new Error(j.error.message||'RPC error');return j.result}
+const toB64=u8=>{let s='';for(let i=0;i<u8.length;i++)s+=String.fromCharCode(u8[i]);return btoa(s)};
+
+/* ======================= background ======================= */
+(function(){const c=$('#bgc'),g=c.getContext('2d');const P=6;let W,H,cells,mx=-99,my=-99;
+ function size(){W=Math.ceil(innerWidth/P);H=Math.ceil(innerHeight/P);c.width=W;c.height=H;cells=new Float32Array(W*H)}size();addEventListener('resize',size);
+ addEventListener('pointermove',e=>{mx=e.clientX/P;my=e.clientY/P});
+ let t=0;(function f(){requestAnimationFrame(f);if(document.hidden)return;t++;if(t%2)return;g.clearRect(0,0,W,H);
+  for(let i=0;i<4;i++){const x=Math.floor(Math.random()*W),y=Math.floor(Math.random()*H);cells[y*W+x]=Math.max(cells[y*W+x],.5)}
+  for(let y=Math.max(0,my-10|0);y<Math.min(H,my+10);y++)for(let x=Math.max(0,mx-10|0);x<Math.min(W,mx+10);x++){const d=Math.hypot(x-mx,y-my);if(d<10&&(x+y)%2===0)cells[y*W+x]=Math.max(cells[y*W+x],1-d/10)}
+  for(let i=0;i<cells.length;i++){const v=cells[i];if(v>.02){g.fillStyle=`rgba(56,242,255,${v*.22})`;g.fillRect(i%W,(i/W)|0,1,1);cells[i]=v*.94}}
+  g.fillStyle='rgba(56,242,255,.035)';for(let y=0;y<H;y+=6)for(let x=(y/6)%2?3:0;x<W;x+=6)g.fillRect(x,y,1,1)})()})();
+
+/* ======================= icons + avatars ======================= */
+const IC={home:'<path d="M3 11 12 4l9 7v9h-6v-6H9v6H3z"/>',explore:'<circle cx="12" cy="12" r="9"/><path d="m15.5 8.5-2 5-5 2 2-5z"/>',board:'<path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0zM7 6H4v2a3 3 0 0 0 3 3M17 6h3v2a3 3 0 0 1-3 3"/>',launch:'<path d="M5 15c-1 2-1 4-1 4s2 0 4-1M9 15l-3-3c1-4 5-8 12-8 0 7-4 11-8 12zM14 10a1 1 0 1 0 0-.01"/>',docs:'<path d="M6 3h9l4 4v14H6zM14 3v5h5M9 13h6M9 17h6"/>',me:'<circle cx="12" cy="8" r="4"/><path d="M4 21c1-4 4-6 8-6s7 2 8 6"/>',x:'<path d="M4 4l16 16M20 4 4 20"/>',star:'<path d="m12 3 2.8 5.8 6.2.9-4.5 4.4 1 6.3L12 17.5 6.5 20.4l1-6.3L3 9.7l6.2-.9z"/>',ext:'<path d="M14 4h6v6M20 4l-9 9M18 14v6H4V6h6"/>'};
+const icon=(k,sw=2)=>`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${sw}" stroke-linejoin="round" stroke-linecap="round">${IC[k]}</svg>`;
+const xlogo='<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M18.9 2H22l-7.5 8.6L23 22h-6.8l-5.3-6.9L4.8 22H1.7l8-9.2L1 2h7l4.8 6.3zM17.7 20h1.9L7.4 4H5.4z"/></svg>';
+function av(img,sym){const l=esc((sym||'?')[0]?.toUpperCase()||'?');return img?`<span class="av"><img src="${esc(img)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.parentNode.textContent='${l}'"></span>`:`<span class="av">${l}</span>`}
+
+/* ======================= market data ======================= */
+const TOK=new Map(); // mint -> {mint,name,symbol,image,desc,mcapUsd,mcapSol,ch24,vol24,pair,url,created,creator,links}
+let SOLUSD=null;
+async function solPrice(){try{const j=await getJSON(API.jup);SOLUSD=j.So11111111111111111111111111111111111111112?.usdPrice||SOLUSD;$('#solp').textContent=SOLUSD?'$'+SOLUSD.toFixed(2):'—'}catch(e){$('#solp').textContent='unavailable'}}
+function fromPair(p){if(!p||!p.baseToken)return null;const m=p.baseToken.address;const o=TOK.get(m)||{mint:m};Object.assign(o,{name:p.baseToken.name,symbol:p.baseToken.symbol,image:p.info?.imageUrl||o.image,mcapUsd:p.marketCap||p.fdv,ch24:p.priceChange?.h24,ch1:p.priceChange?.h1,vol24:p.volume?.h24,liq:p.liquidity?.usd,pair:p.pairAddress,url:p.url,priceUsd:+p.priceUsd,created:p.pairCreatedAt||o.created,dexId:p.dexId,links:[...(p.info?.websites||[]).map(w=>w.url),...(p.info?.socials||[]).map(s=>s.url)]});TOK.set(m,o);return o}
+async function pairsFor(mints){const out=[];for(let i=0;i<mints.length;i+=30){const ch=mints.slice(i,i+30);try{const arr=await getJSON(`${API.dex}/tokens/v1/solana/${ch.join(',')}`);const best={};arr.forEach(p=>{const m=p.baseToken?.address;if(!m)return;if(!best[m]||(p.liquidity?.usd||0)>(best[m].liquidity?.usd||0))best[m]=p});Object.values(best).forEach(p=>out.push(fromPair(p)))}catch(e){}}return out.filter(Boolean)}
+let TOP=[],TOP_T=0;
+async function loadTop(force){if(!force&&Date.now()-TOP_T<60000&&TOP.length)return TOP;const b=await getJSON(`${API.dex}/token-boosts/top/v1`);const mints=[...new Set(b.filter(x=>x.chainId==='solana').map(x=>x.tokenAddress))].slice(0,60);
+ b.forEach(x=>{if(x.chainId!=='solana')return;const o=TOK.get(x.tokenAddress)||{mint:x.tokenAddress};o.image=o.image||x.icon;o.desc=o.desc||x.description;TOK.set(x.tokenAddress,o)});
+ TOP=(await pairsFor(mints)).filter(t=>t.mcapUsd);TOP_T=Date.now();return TOP}
+async function paintSide(){try{const t=await loadTop();const L=[...t].sort((a,b)=>b.mcapUsd-a.mcapUsd).slice(0,10);
+ $('#top10').innerHTML=L.map((x,i)=>`<div class="rr" data-m="${x.mint}"><span class="n">${i+1}</span>${av(x.image,x.symbol)}<div><b>${esc(x.name)}</b><small>$${esc(x.symbol)}</small></div><div class="v"><b>${usd(x.mcapUsd)}</b><br><span class="${x.ch24>=0?'up':'dn'}">${pct(x.ch24)}</span></div></div>`).join('')||'<div class="empty">No data.</div>';
+ bindRows('#top10')}catch(e){$('#top10').innerHTML=`<div class="empty">DexScreener unavailable right now.</div>`}}
+function bindRows(sel){$$(sel+' [data-m]').forEach(el=>el.onclick=e=>{if(e.target.closest('a,button'))return;go('/t/'+el.dataset.m)})}
+
+/* live launches via PumpPortal websocket */
+const LIVE=[];let ws=null,wsOk=false,wsSubs=new Set(),tradeCb=null;
+function wsConnect(){try{ws=new WebSocket(API.ws)}catch(e){return}
+ ws.onopen=()=>{wsOk=true;ws.send(JSON.stringify({method:'subscribeNewToken'}));if(wsSubs.size)ws.send(JSON.stringify({method:'subscribeTokenTrade',keys:[...wsSubs]}));paintLive()};
+ ws.onclose=()=>{wsOk=false;paintLive();setTimeout(wsConnect,4000)};ws.onerror=()=>{};
+ ws.onmessage=e=>{let d;try{d=JSON.parse(e.data)}catch(_){return}if(!d||!d.mint)return;
+  if(d.txType==='create'){const o=TOK.get(d.mint)||{mint:d.mint};Object.assign(o,{name:d.name,symbol:d.symbol,uri:d.uri,mcapSol:d.marketCapSol,created:Date.now(),creator:d.traderPublicKey,initialBuy:d.solAmount,sig:d.signature,pool:d.pool||'pump'});TOK.set(d.mint,o);LIVE.unshift(o);if(LIVE.length>120)LIVE.pop();fetchMeta(o);onLive(o)}
+  else if(d.txType==='buy'||d.txType==='sell'){const o=TOK.get(d.mint);if(o){o.mcapSol=d.marketCapSol}if(tradeCb)tradeCb(d)}}}
+function wsTrades(mint,cb){if(tradeCb&&wsSubs.size&&ws&&wsOk)ws.send(JSON.stringify({method:'unsubscribeTokenTrade',keys:[...wsSubs]}));wsSubs=new Set(mint?[mint]:[]);tradeCb=cb;if(mint&&ws&&wsOk)ws.send(JSON.stringify({method:'subscribeTokenTrade',keys:[mint]}))}
+const metaQ=[];let metaRun=0;
+function fetchMeta(o){if(!o.uri||o.metaTried)return;o.metaTried=true;metaQ.push(o);pumpMeta()}
+async function pumpMeta(){if(metaRun>=3||!metaQ.length)return;metaRun++;const o=metaQ.shift();try{const ctl=new AbortController();setTimeout(()=>ctl.abort(),6000);const j=await getJSON(o.uri,{signal:ctl.signal});o.image=j.image||o.image;o.desc=j.description||o.desc;o.links=[j.twitter,j.telegram,j.website].filter(Boolean);const el=document.querySelector(`[data-pm="${o.mint}"]`);if(el)el.outerHTML=postCard(o,false);bindPosts()}catch(e){}metaRun--;pumpMeta()}
+let liveTimer=null;
+function onLive(o){paintJust();if(route.name==='home'&&homeTab==='live'){const feed=$('#feed');if(feed&&!document.querySelector(`[data-pm="${o.mint}"]`)){if(feed.querySelector('.empty'))feed.innerHTML='';feed.insertAdjacentHTML('afterbegin',postCard(o,true));while(feed.children.length>60)feed.lastElementChild.remove();bindPosts()}}}
+function paintJust(){const L=LIVE.slice(0,6);$('#justN').textContent=wsOk?'pump.fun · live':'reconnecting…';$('#just').innerHTML=L.length?L.map(x=>`<div class="rr" data-m="${x.mint}"><span class="n">·</span>${av(x.image,x.symbol)}<div><b>${esc(x.name)}</b><small>$${esc(x.symbol)} · ${ago(x.created)}</small></div><div class="v"><b>${x.mcapSol?x.mcapSol.toFixed(1)+' SOL':'—'}</b></div></div>`).join(''):'<div class="empty" style="padding:18px">Waiting for the next launch…</div>';bindRows('#just')}
+function paintLive(){const el=$('#liveTag');if(el){el.classList.toggle('off',!wsOk);el.lastChild.textContent=wsOk?' live':' reconnecting'}paintJust()}
+
+/* ======================= wallet / auth ======================= */
+let W=null; // {name,provider,pk,sig}
+function providers(){const L=[];const ph=window.phantom?.solana||(window.solana?.isPhantom?window.solana:null);if(ph)L.push(['Phantom',ph]);if(window.solflare?.isSolflare)L.push(['Solflare',window.solflare]);if(window.backpack?.isBackpack||window.backpack?.solana)L.push(['Backpack',window.backpack?.solana||window.backpack]);return L}
+function openWallet(after){const P=providers();modal(`<button class="mx" onclick="closeModal()">×</button><h3>Sign in</h3><p>Connect a Solana wallet, then sign a short message to prove it's yours. Signing a message is free and can't move funds. TAGGED never asks for your seed phrase.</p>
+ <div class="wl">${P.map(([n])=>`<button data-w="${n}">${n}<span class="ok">detected</span></button>`).join('')}${P.length?'':'<p style="margin:4px 0 8px">No Solana wallet found in this browser.</p>'}${[['Phantom','https://phantom.com/download'],['Solflare','https://solflare.com/download'],['Backpack','https://backpack.app/download']].filter(([n])=>!P.find(p=>p[0]===n)).map(([n,u])=>`<a href="${u}" target="_blank" rel="noopener">${n}<span>install ↗</span></a>`).join('')}</div>
+ <p style="font-size:12px">On a phone, open this site inside your wallet app's browser.</p>`);
+ $$('[data-w]').forEach(b=>b.onclick=()=>signIn(b.dataset.w,after))}
+async function signIn(name,after){const p=providers().find(x=>x[0]===name)?.[1];if(!p)return;try{const res=await p.connect();const pk=(res?.publicKey||p.publicKey).toString();
+ const nonce=crypto.getRandomValues(new Uint32Array(2)).join('');const msg=`Sign in to TAGGED\n\nWallet: ${pk}\nNonce: ${nonce}\nIssued: ${new Date().toISOString()}\n\nThis signature proves you own this wallet. It does not authorize any transaction.`;
+ const s=await p.signMessage(new TextEncoder().encode(msg),'utf8');const sigBytes=s?.signature||s;const B=await lib('bs58');const sig=B.default.encode(new Uint8Array(sigBytes));
+ W={name,provider:p,pk,sig};store.set('session',{name,pk,sig,t:Date.now()});closeModal();toast(`Signed in as <b>${short(pk)}</b>`,'ok');paintAcct();bal();p.on?.('accountChanged',()=>{signOut(true)});if(after)after();else render()}
+ catch(e){toast('Sign-in cancelled'+(e?.message?': '+esc(e.message):'.'),'bad')}}
+async function restore(){const s=store.get('session');if(!s)return;const p=providers().find(x=>x[0]===s.name)?.[1];if(!p)return;try{const res=await p.connect({onlyIfTrusted:true});const pk=(res?.publicKey||p.publicKey)?.toString();if(pk===s.pk){W={name:s.name,provider:p,pk,sig:s.sig};paintAcct();bal();render()}}catch(e){}}
+function signOut(silent){try{W?.provider?.disconnect?.()}catch(e){}W=null;store.set('session',null);paintAcct();if(!silent)toast('Signed out.');render()}
+let BAL=null;async function bal(){if(!W)return;try{const r=await rpc('getBalance',[W.pk,{commitment:'confirmed'}]);BAL=r.value/1e9;paintAcct()}catch(e){}}
+function paintAcct(){$('#acct').innerHTML=W?`<div class="me">${av(null,W.pk)}<div><b>${short(W.pk)}</b><small>${BAL==null?'—':BAL.toFixed(3)+' SOL'} · <a href="#/me" style="color:var(--acc)">profile</a></small></div></div><button class="signin" style="margin-top:8px;width:100%" onclick="signOut()"><span>Sign out</span>${icon('x')}</button>`:`<button class="signin" style="width:100%" onclick="openWallet()">${icon('me')}<span>Sign in with wallet</span></button>`;
+ const mt=$('#mtopAcct');if(mt)mt.innerHTML=W?`<a class="ab" href="#/me">${short(W.pk)}</a>`:`<button class="ab pri" onclick="openWallet()">Sign in</button>`}
+function need(fn){return W?fn():openWallet(fn)}
+async function signSend(tx,extraSigners){const signed=await W.provider.signTransaction(tx);if(extraSigners&&extraSigners.length)signed.sign(extraSigners);const raw=signed.serialize();
+ const sig=await rpc('sendTransaction',[toB64(raw),{encoding:'base64',skipPreflight:false,preflightCommitment:'confirmed',maxRetries:5}]);return sig}
+async function confirmSig(sig,ms=75000){const t0=Date.now();while(Date.now()-t0<ms){try{const r=await rpc('getSignatureStatuses',[[sig],{searchTransactionHistory:true}]);const s=r.value[0];if(s){if(s.err)throw new Error('Transaction failed on-chain: '+JSON.stringify(s.err));if(s.confirmationStatus==='confirmed'||s.confirmationStatus==='finalized')return true}}catch(e){if(String(e.message).startsWith('Transaction failed'))throw e}await new Promise(r=>setTimeout(r,1500))}throw new Error('Not confirmed yet. Check Solscan; it may still land.')}
+
+/* ======================= modal / confetti ======================= */
+function modal(h){$('#mbox').innerHTML=h;$('#modal').classList.add('on')}
+function closeModal(){$('#modal').classList.remove('on')}
+$('#modal').onclick=e=>{if(e.target.id==='modal'&&!$('#mbox').dataset.lock)closeModal()};
+addEventListener('keydown',e=>{if(e.key==='Escape'&&!$('#mbox').dataset.lock)closeModal()});
+function confetti(){const c=$('#confetti'),g=c.getContext('2d');c.width=innerWidth;c.height=innerHeight;const P=Array.from({length:160},()=>({x:innerWidth/2,y:innerHeight*.45,vx:(Math.random()-.5)*14,vy:-Math.random()*14-4,s:4+Math.random()*6,c:['#38f2ff','#8f7bff','#35e08a','#ffc04d','#fff'][Math.floor(Math.random()*5)],l:1}));
+ (function f(){g.clearRect(0,0,c.width,c.height);let any=false;P.forEach(p=>{if(p.l<=0)return;any=true;p.vy+=.35;p.x+=p.vx;p.y+=p.vy;p.l-=.008;g.globalAlpha=Math.max(0,p.l);g.fillStyle=p.c;g.fillRect(p.x|0,p.y|0,p.s,p.s)});g.globalAlpha=1;if(any)requestAnimationFrame(f);else g.clearRect(0,0,c.width,c.height)})()}
+
+/* ======================= router ======================= */
+let route={name:'home',arg:null},homeTab='live';
+const NAV=[['home','Home','#/'],['explore','Explore','#/explore'],['board','Leaderboard','#/leaderboard'],['launch','Launchpad','#/launch'],['me','Profile','#/me'],['docs','Docs','#/docs']];
+function paintNav(){$('#nav').innerHTML=NAV.map(([k,l,h])=>`<a class="nv ${route.name===k||(k==='home'&&route.name==='room'&&0)?'on':''}" href="${h}">${icon(k==='board'?'board':k)}<span class="lbl">${l}</span>${k==='home'?'<span class="ct" id="liveCt"></span>':''}</a>`).join('');
+ $('#mnav').innerHTML=NAV.filter(n=>n[0]!=='docs').map(([k,l,h])=>`<a class="${route.name===k?'on':''}" href="${h}">${icon(k)}${k==='board'?'Board':l}</a>`).join('')}
+function go(p){location.hash='#'+p}
+function parse(){const h=location.hash.replace(/^#/,'')||'/';const [_,a,b]=h.split('/');const m={'':'home',explore:'explore',leaderboard:'board',launch:'launch',docs:'docs',me:'me',t:'room'};return{name:m[a||'']||'home',arg:b?decodeURIComponent(b):null}}
+addEventListener('hashchange',()=>{route=parse();render();scrollTo(0,0)});
+function head(title,extra=''){return `<div class="mh"><div class="t"><h1>${title}</h1><div class="mtop" id="mtopAcct"></div>${extra}</div></div>`}
+function render(){paintNav();if(route.name!=='room')wsTrades(null,null);const v=$('#view');
+ ({home:vHome,explore:vExplore,board:vBoard,launch:vLaunch,docs:vDocs,me:vMe,room:vRoom}[route.name]||vHome)(v);paintAcct()}
+
+/* ======================= HOME ======================= */
+function postCard(o,isNew){const mine=(store.get('launches',[])).some(l=>l.mint===o.mint);const fol=(store.get('follow',[])).includes(o.mint);
+ return `<article class="post ${isNew?'new':''}" data-pm="${o.mint}" data-m="${o.mint}">${av(o.image,o.symbol)}<div style="min-width:0"><div class="ph"><b>${esc(o.name||short(o.mint))}</b><span class="tk">$${esc(o.symbol||'')}</span>${mine?'<span class="badge mine">your launch</span>':o.pool&&o.pool!=='pump'?`<span class="badge">${esc(o.pool)}</span>`:'<span class="badge">new</span>'}<span class="tm">${o.created?ago(o.created):''}</span></div>
+ <p>${o.desc?esc(o.desc).slice(0,220):`Launched on ${o.pool==='bonk'?'LetsBonk':'pump.fun'}${o.creator?' by '+short(o.creator):''}.`}</p>
+ <div class="stats"><span>mcap <b>${o.mcapSol?o.mcapSol.toFixed(1)+' SOL':'—'}</b>${SOLUSD&&o.mcapSol?` <b>(${usd(o.mcapSol*SOLUSD)})</b>`:''}</span>${o.initialBuy!=null?`<span>dev buy <b>${(+o.initialBuy).toFixed(2)} SOL</b></span>`:''}${o.creator?`<span>dev <b>${short(o.creator)}</b></span>`:''}</div>
+ <div class="acts"><a class="ab pri" href="#/t/${o.mint}">Open room</a><button class="ab ${fol?'on':''}" data-fol="${o.mint}">${icon('star')}${fol?'Following':'Follow'}</button><a class="ab" target="_blank" rel="noopener" href="https://x.com/intent/post?text=${encodeURIComponent('$'+(o.symbol||'')+' just launched '+SITE+'#/t/'+o.mint)}">${xlogo} Post</a><a class="ab" target="_blank" rel="noopener" href="https://pump.fun/coin/${o.mint}">pump.fun ${icon('ext')}</a></div></div></article>`}
+function bindPosts(){$$('.post').forEach(el=>{el.onclick=e=>{if(e.target.closest('a,button'))return;go('/t/'+el.dataset.m)}});$$('[data-fol]').forEach(b=>b.onclick=e=>{e.stopPropagation();toggleFollow(b.dataset.fol);b.classList.toggle('on');b.innerHTML=icon('star')+(b.classList.contains('on')?'Following':'Follow')})}
+function toggleFollow(m){const f=store.get('follow',[]);const i=f.indexOf(m);if(i>=0){f.splice(i,1);toast('Unfollowed.')}else{f.unshift(m);toast('Following. It shows under the Following tab.','ok')}store.set('follow',f.slice(0,200))}
+async function vHome(v){v.innerHTML=head('HOME',`<span class="live ${wsOk?'':'off'}" id="liveTag"><i></i> ${wsOk?'live':'connecting'}</span>`)+`<div class="tabs" style="border-bottom:1px solid var(--line);position:sticky;top:61px;z-index:19;background:rgba(8,9,12,.92)"><button class="tab ${homeTab==='live'?'on':''}" data-t="live">Live launches</button><button class="tab ${homeTab==='follow'?'on':''}" data-t="follow">Following</button><button class="tab ${homeTab==='mine'?'on':''}" data-t="mine">Your launches</button></div>
+ <div class="sec-h"><h2>TRENDING NOW</h2><a href="#/leaderboard">See all</a></div><div class="trend" id="trend"><div class="skel" style="width:176px;height:150px;margin:0;flex:none"></div><div class="skel" style="width:176px;height:150px;margin:0;flex:none"></div><div class="skel" style="width:176px;height:150px;margin:0;flex:none"></div></div><div id="feed"></div>`;
+ $$('.tab').forEach(t=>t.onclick=()=>{homeTab=t.dataset.t;render()});
+ loadTop().then(t=>{const L=[...t].sort((a,b)=>(b.vol24||0)-(a.vol24||0)).slice(0,10);const el=$('#trend');if(!el)return;el.innerHTML=L.map(x=>`<a class="tc" href="#/t/${x.mint}">${av(x.image,x.symbol)}<b>${esc(x.name)}</b><small>$${esc(x.symbol)} · vol ${usd(x.vol24)}</small><div class="pr"><span>${usd(x.mcapUsd)}</span><span class="${x.ch24>=0?'up':'dn'}">${pct(x.ch24)}</span></div></a>`).join('')}).catch(()=>{const el=$('#trend');if(el)el.innerHTML='<div class="err" style="margin:0">Trending data from DexScreener is unavailable right now.</div>'});
+ const feed=$('#feed');
+ if(homeTab==='live'){feed.innerHTML=LIVE.length?LIVE.slice(0,40).map(o=>postCard(o)).join(''):`<div class="empty">${wsOk?'Listening for new launches on pump.fun… they appear here the second they hit the chain.':'Connecting to the live launch stream…'}</div>`;bindPosts()}
+ if(homeTab==='follow'){const f=store.get('follow',[]);if(!f.length){feed.innerHTML='<div class="empty">You\'re not following any tokens yet. Hit <b>Follow</b> on any launch or room.</div>';return}feed.innerHTML='<div class="skel"></div>';const ts=await pairsFor(f);const map=new Map(ts.map(t=>[t.mint,t]));feed.innerHTML=f.map(m=>{const t=map.get(m)||TOK.get(m)||{mint:m};return postCard(t)}).join('');bindPosts()}
+ if(homeTab==='mine'){const L=store.get('launches',[]);feed.innerHTML=L.length?L.map(l=>postCard({...l,created:l.t,desc:l.desc})).join(''):'<div class="empty">Tokens you launch from this browser show up here. <a href="#/launch" style="color:var(--acc)">Launch one →</a></div>';bindPosts()}}
+
+/* ======================= EXPLORE ======================= */
+async function vExplore(v){const q=route.arg||'';v.innerHTML=head('EXPLORE')+`<form class="searchbar" id="ef"><input id="eq" placeholder="Search by name, ticker or mint address" value="${esc(q)}"><button class="btn pri">Search</button></form><div class="sec-h"><h2>${q?'RESULTS':'LATEST PROFILES'}</h2><small class="mono" style="color:var(--mut);font-size:11.5px">DexScreener</small></div><div id="eg"><div class="skel"></div><div class="skel"></div></div>`;
+ $('#ef').onsubmit=e=>{e.preventDefault();const s=$('#eq').value.trim();if(/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(s))go('/t/'+s);else go('/explore/'+encodeURIComponent(s))};
+ try{let L;if(q){const j=await getJSON(`${API.dex}/latest/dex/search?q=${encodeURIComponent(q)}`);const best={};(j.pairs||[]).filter(p=>p.chainId==='solana').forEach(p=>{const m=p.baseToken.address;if(!best[m]||(p.liquidity?.usd||0)>(best[m].liquidity?.usd||0))best[m]=p});L=Object.values(best).map(fromPair)}
+  else{const pr=await getJSON(`${API.dex}/token-profiles/latest/v1`);const sol=pr.filter(p=>p.chainId==='solana');sol.forEach(p=>{const o=TOK.get(p.tokenAddress)||{mint:p.tokenAddress};o.image=o.image||p.icon;o.desc=p.description||o.desc;TOK.set(p.tokenAddress,o)});L=await pairsFor(sol.map(p=>p.tokenAddress).slice(0,30));L.forEach(t=>{const p=sol.find(x=>x.tokenAddress===t.mint);if(p&&!t.desc)t.desc=p.description})}
+  const el=$('#eg');if(!el)return;el.className='grid';el.innerHTML=L.length?L.map(t=>`<div class="gc" data-m="${t.mint}"><div class="top">${av(t.image,t.symbol)}<div style="min-width:0"><b>${esc(t.name)}</b><small>$${esc(t.symbol)}${t.created?' · '+ago(t.created):''}</small></div></div>${t.desc?`<p>${esc(t.desc)}</p>`:''}<div class="kv"><span>${usd(t.mcapUsd)}</span><span class="${t.ch24>=0?'up':'dn'}">${pct(t.ch24)}</span><span style="color:var(--mut)">vol ${usd(t.vol24)}</span></div></div>`).join(''):'<div class="empty" style="grid-column:1/-1">Nothing found on Solana for that search.</div>';bindRows('#eg')}
+ catch(e){const el=$('#eg');if(el)el.innerHTML=`<div class="err">Couldn't reach DexScreener (${esc(e.message)}). Try again in a moment.</div>`}}
+
+/* ======================= LEADERBOARD ======================= */
+let boardSort='vol';
+async function vBoard(v){v.innerHTML=head('LEADERBOARD',`<button class="ab" id="rf">Refresh</button>`)+`<div class="tabs" style="border-bottom:1px solid var(--line)"><button class="tab ${boardSort==='vol'?'on':''}" data-s="vol">24h volume</button><button class="tab ${boardSort==='mcap'?'on':''}" data-s="mcap">Market cap</button><button class="tab ${boardSort==='ch'?'on':''}" data-s="ch">24h gainers</button></div><div id="bt"><div class="skel"></div><div class="skel"></div></div>`;
+ $$('.tab').forEach(t=>t.onclick=()=>{boardSort=t.dataset.s;render()});$('#rf').onclick=()=>{TOP_T=0;render()};
+ try{const t=await loadTop();const L=[...t].sort((a,b)=>boardSort==='vol'?(b.vol24||0)-(a.vol24||0):boardSort==='mcap'?b.mcapUsd-a.mcapUsd:(b.ch24||-1e9)-(a.ch24||-1e9)).slice(0,40);const el=$('#bt');if(!el)return;
+  el.innerHTML=`<table><thead><tr><th>#</th><th>Token</th><th>Mcap</th><th class="hide-m">24h vol</th><th>24h</th></tr></thead><tbody>${L.map((x,i)=>`<tr class="cl" data-m="${x.mint}"><td class="rk ${i<3?'g':''}">${i+1}</td><td><div class="nm">${av(x.image,x.symbol)}<div><b>${esc(x.name)}</b><br><small style="color:var(--mut);font-family:var(--mono);font-size:11px">$${esc(x.symbol)}</small></div></div></td><td>${usd(x.mcapUsd)}</td><td class="hide-m">${usd(x.vol24)}</td><td class="${x.ch24>=0?'up':'dn'}">${pct(x.ch24)}</td></tr>`).join('')}</tbody></table><p class="note" style="padding:14px 20px">Ranked from DexScreener's most-boosted Solana tokens, refreshed every minute.</p>`;bindRows('#bt')}
+ catch(e){const el=$('#bt');if(el)el.innerHTML=`<div class="err">Couldn't load the board from DexScreener (${esc(e.message)}).</div>`}}
+
+/* ======================= LAUNCHPAD ======================= */
+const F=store.get('draft',{type:'fair',name:'',symbol:'',desc:'',twitter:'',telegram:'',website:'',dev:0.1,prio:0.0005,slip:15});
+let IMG=null; // {blob,url,type}
+function tokensForSol(sol){const vs=30,vt=1073000000;return vt-(vs*vt)/(vs+sol)}
+function vLaunch(v){v.innerHTML=head('LAUNCHPAD',`<span class="live"><i></i> Solana · pump.fun</span>`)+`<div class="lp">
+ <div><div class="eyebrow">CREATE YOUR COMMUNITY</div><p class="note" style="margin-top:6px;font-size:14px">A home for your token. It launches for real on pump.fun from your wallet, then gets its own room here with a live chart, live trades and a one-tap way to post about it on X.</p></div>
+ <div class="prev"><div class="scan"></div><div class="pt"><span class="av" id="pAv">${IMG?`<img src="${IMG.url}" alt="">`:'T'}</span><div style="min-width:0"><div class="eyebrow">LIVE PREVIEW</div><h3><span id="pName">Your token</span> <span id="pSym">· $TICKER</span></h3><p id="pDesc">Give your community a name and a story. Your preview updates as you go.</p></div></div>
+  <div class="pk"><div>Pair asset<b>SOL</b></div><div>Platform<b>pump.fun</b></div><div>Developer buy<b id="pDev">0 SOL</b></div></div></div>
+ <details class="how"><summary>HOW IT WORKS &amp; FEES</summary><div>
+  <p><b>1. Your image and details</b> are stored permanently on Arweave through ArDrive Turbo. Files are compressed under 100&nbsp;KB, so storage is free.</p>
+  <p><b>2. PumpPortal builds</b> the pump.fun create transaction. A fresh mint address is generated in your browser and co-signs it.</p>
+  <p><b>3. You approve it</b> in your wallet. You pay pump.fun's normal creation cost (about 0.02 SOL in network rent and fees), plus any developer buy you choose. PumpPortal charges <b>0.5%</b> of the developer buy. TAGGED takes nothing.</p>
+  <p><b>4. It goes live</b> on pump.fun's bonding curve straight away. You get its room here, a pump.fun link and a Solscan receipt. As the creator you earn pump.fun's creator rewards on trading volume, claimable on pump.fun.</p></div></details>
+ <div class="step"><div class="sh"><span class="no">01</span><div><h3>CHOOSE YOUR LAUNCH</h3><p>Decide how your token starts.</p></div></div>
+  <div class="opts"><button class="opt ${F.type==='fair'?'on':''}" data-ty="fair"><small>No developer buy</small><b>FAIR START</b><span>Nobody holds supply at launch, you included. The first buyers set the price.</span></button><button class="opt ${F.type==='creator'?'on':''}" data-ty="creator"><small>Up to 3 SOL first buy</small><b>CREATOR LAUNCH</b><span>You buy first, in the same transaction as the launch, so no sniper gets in ahead of you.</span></button></div></div>
+ <div class="step"><div class="sh"><span class="no">02</span><div><h3>MAKE IT YOURS</h3><p>A name, a ticker, an image and a reason to join.</p></div></div>
+  <div class="f2"><div class="fl"><label>Token name <small id="nC">0/32</small></label><input class="in" id="fName" maxlength="32" placeholder="Night Owl" value="${esc(F.name)}"></div><div class="fl"><label>Ticker <small id="sC">0/10</small></label><input class="in mono" id="fSym" maxlength="10" placeholder="HOOT" value="${esc(F.symbol)}"></div></div>
+  <div class="fl"><label>Description <small id="dC">0/500</small></label><textarea class="in" id="fDesc" maxlength="500" placeholder="What is it, and why should people join?">${esc(F.desc)}</textarea></div>
+  <div class="fl"><label>Token image <small>PNG, JPEG, WebP or GIF · up to 5 MB</small></label><div class="drop" id="drop"><span class="av" id="dAv">${IMG?`<img src="${IMG.url}" alt="">`:'+'}</span><div><b id="dT">${IMG?'Image ready':'Upload an image'}</b><small>Square works best. It's resized to 512&nbsp;px and stored permanently on Arweave. If you skip this, a pixel badge with your ticker is made for you.</small></div><input type="file" id="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden></div></div>
+  <div class="f2"><div class="fl"><label>X / Twitter <small>optional</small></label><input class="in" id="fTw" placeholder="https://x.com/yourtoken" value="${esc(F.twitter)}"></div><div class="fl"><label>Telegram <small>optional</small></label><input class="in" id="fTg" placeholder="https://t.me/yourtoken" value="${esc(F.telegram)}"></div></div>
+  <div class="fl"><label>Website <small>optional · defaults to your TAGGED room</small></label><input class="in" id="fWeb" placeholder="https://" value="${esc(F.website)}"></div></div>
+ <div class="step" id="devStep" ${F.type==='fair'?'style="opacity:.55"':''}><div class="sh"><span class="no">03</span><div><h3>DEVELOPER BUY</h3><p id="devHint">${F.type==='fair'?'Fair start keeps this at zero. Pick Creator launch to add a first buy.':'Bought in the same transaction as the launch.'}</p></div></div>
+  <div class="rg"><input type="range" id="fDev" min="0" max="3" step="0.05" value="${F.type==='fair'?0:F.dev}" ${F.type==='fair'?'disabled':''}><output id="oDev"></output></div>
+  <div class="f2" style="margin-top:14px"><div class="fl"><label>Priority fee <small>SOL</small></label><select class="in" id="fPrio"><option value="0.0001">0.0001 · normal</option><option value="0.0005">0.0005 · fast</option><option value="0.002">0.002 · very fast</option></select></div><div class="fl"><label>Slippage <small>dev buy</small></label><select class="in" id="fSlip"><option value="10">10%</option><option value="15">15%</option><option value="25">25%</option></select></div></div></div>
+ </div>
+ <div class="launchbar"><p class="note" id="lbNote"></p><button class="btn pri" id="goLaunch">Review &amp; launch</button></div>`;
+ const upd=()=>{F.name=$('#fName').value.trim();F.symbol=$('#fSym').value.replace(/[^A-Za-z0-9]/g,'').toUpperCase();$('#fSym').value=F.symbol;F.desc=$('#fDesc').value;F.twitter=$('#fTw').value.trim();F.telegram=$('#fTg').value.trim();F.website=$('#fWeb').value.trim();F.dev=F.type==='fair'?0:+$('#fDev').value;F.prio=+$('#fPrio').value;F.slip=+$('#fSlip').value;store.set('draft',F);
+  $('#nC').textContent=F.name.length+'/32';$('#sC').textContent=F.symbol.length+'/10';$('#dC').textContent=F.desc.length+'/500';
+  $('#pName').textContent=F.name||'Your token';$('#pSym').textContent='· $'+(F.symbol||'TICKER');$('#pDesc').textContent=F.desc||'Give your community a name and a story. Your preview updates as you go.';
+  if(!IMG)$('#pAv').textContent=(F.symbol||'T')[0];
+  const tk=tokensForSol(F.dev);$('#oDev').textContent=F.dev>0?`${F.dev.toFixed(2)} SOL ≈ ${(tk/1e7).toFixed(2)}% supply`:'0 SOL · no initial buy';$('#pDev').textContent=F.dev>0?F.dev.toFixed(2)+' SOL':'0 SOL';
+  const need=0.025+F.dev*1.005+F.prio;$('#lbNote').innerHTML=`You'll need about <b>${need.toFixed(3)} SOL</b> in your wallet${W&&BAL!=null?` · you have <b>${BAL.toFixed(3)}</b>`:''}. ${W?'':'You\'ll be asked to sign in first.'}`};
+ ['#fName','#fSym','#fDesc','#fTw','#fTg','#fWeb','#fDev','#fPrio','#fSlip'].forEach(s=>$(s).addEventListener('input',upd));
+ $('#fPrio').value=String(F.prio);$('#fSlip').value=String(F.slip);
+ $$('[data-ty]').forEach(b=>b.onclick=()=>{F.type=b.dataset.ty;if(F.type==='creator'&&!F.dev)F.dev=0.25;store.set('draft',F);vLaunch(v)});
+ const drop=$('#drop'),file=$('#file');drop.onclick=()=>file.click();file.onchange=()=>file.files[0]&&pickImg(file.files[0]);
+ drop.ondragover=e=>{e.preventDefault();drop.classList.add('over')};drop.ondragleave=()=>drop.classList.remove('over');drop.ondrop=e=>{e.preventDefault();drop.classList.remove('over');e.dataTransfer.files[0]&&pickImg(e.dataTransfer.files[0])};
+ $('#goLaunch').onclick=()=>{upd();const err=!F.name?'Give your token a name.':F.symbol.length<2?'Ticker needs at least 2 letters.':null;if(err)return toast(err,'bad');need(review)};
+ upd()}
+function pickImg(f){if(!/^image\/(png|jpeg|webp|gif)$/.test(f.type))return toast('Use a PNG, JPEG, WebP or GIF.','bad');if(f.size>5e6)return toast('That image is over 5 MB.','bad');if(IMG?.url)URL.revokeObjectURL(IMG.url);IMG={file:f,url:URL.createObjectURL(f)};$('#dAv').innerHTML=`<img src="${IMG.url}" alt="">`;$('#pAv').innerHTML=`<img src="${IMG.url}" alt="">`;$('#dT').textContent='Image ready: '+f.name}
+async function imgToSmall(){const src=IMG?IMG.url:null;const c=document.createElement('canvas');const g=c.getContext('2d');
+ if(!src){c.width=c.height=512;g.imageSmoothingEnabled=false;const s=document.createElement('canvas');s.width=s.height=16;const q=s.getContext('2d');q.fillStyle='#0f1116';q.fillRect(0,0,16,16);let h=0;for(const ch of F.symbol)h=(h*31+ch.charCodeAt(0))>>>0;const cols=['#38f2ff','#8f7bff','#35e08a','#ffc04d','#ff5470'];const col=cols[h%5];for(let y=1;y<15;y++)for(let x=1;x<8;x++){h=(h*1103515245+12345)>>>0;if((h>>16)&1){q.fillStyle=col;q.fillRect(x,y,1,1);q.fillRect(15-x,y,1,1)}}g.drawImage(s,0,0,512,512);g.fillStyle='rgba(8,9,12,.75)';g.fillRect(0,400,512,112);g.fillStyle='#fff';g.font='bold 64px monospace';g.textAlign='center';g.fillText('$'+F.symbol.slice(0,7),256,478)}
+ else{const im=await new Promise((res,rej)=>{const i=new Image();i.onload=()=>res(i);i.onerror=()=>rej(new Error('Could not read that image.'));i.src=src});const s=Math.min(im.width,im.height);c.width=c.height=512;g.drawImage(im,(im.width-s)/2,(im.height-s)/2,s,s,0,0,512,512)}
+ for(const [size,q] of [[512,.9],[512,.75],[448,.7],[384,.65],[320,.6],[256,.55]]){let cv=c;if(size!==512){cv=document.createElement('canvas');cv.width=cv.height=size;cv.getContext('2d').drawImage(c,0,0,size,size)}
+  const b=await new Promise(r=>cv.toBlob(r,'image/webp',q));if(b&&b.type==='image/webp'&&b.size<98000)return{bytes:new Uint8Array(await b.arrayBuffer()),type:'image/webp'};
+  const j=await new Promise(r=>cv.toBlob(r,'image/jpeg',q));if(j&&j.size<98000)return{bytes:new Uint8Array(await j.arrayBuffer()),type:'image/jpeg'}}
+ throw new Error('Could not compress the image under 100 KB.')}
+async function arUpload(bytes,type){const [T,Wb,B]=await Promise.all([lib('turbo'),lib('w3'),lib('bs58')]);const kp=Wb.Keypair.generate();const turbo=T.TurboFactory.authenticated({privateKey:B.default.encode(kp.secretKey),token:'solana'});
+ const res=await turbo.uploadFile({fileStreamFactory:()=>new Blob([bytes]).stream(),fileSizeFactory:()=>bytes.length,dataItemOpts:{tags:[{name:'Content-Type',value:type},{name:'App-Name',value:'TAGGED'}]}});if(!res?.id)throw new Error('Upload returned no id');return API.gw+res.id}
+function review(){const tk=tokensForSol(F.dev);modal(`<button class="mx" onclick="closeModal()">×</button><h3>Review launch</h3><p>This creates a real token on Solana mainnet. It can't be undone or edited after launch.</p>
+ <div class="steps" style="margin:14px 0 4px">${[['Name',esc(F.name)],['Ticker','$'+esc(F.symbol)],['Platform','pump.fun bonding curve, paired with SOL'],['Developer buy',F.dev>0?`${F.dev.toFixed(2)} SOL (≈ ${(tk/1e7).toFixed(2)}% of supply)`:'none (fair start)'],['Image',IMG?esc(IMG.file.name):'auto-generated pixel badge'],['Creator wallet',short(W.pk,6)],['Est. total cost',`≈ ${(0.025+F.dev*1.005+F.prio).toFixed(3)} SOL`]].map(([k,val])=>`<div class="st ok" style="grid-template-columns:120px 1fr;color:var(--ink)"><span style="color:var(--mut)">${k}</span><span>${val}</span></div>`).join('')}</div>
+ <label style="display:flex;gap:10px;align-items:flex-start;font-size:13px;color:var(--mut);margin:10px 0 16px;cursor:pointer"><input type="checkbox" id="ack" style="margin-top:3px;accent-color:var(--acc)">I understand this launches a real memecoin with my own funds, and that memecoins are extremely risky.</label>
+ <button class="btn pri" id="doLaunch" style="width:100%" disabled>Launch on pump.fun</button>`);
+ $('#ack').onchange=e=>$('#doLaunch').disabled=!e.target.checked;$('#doLaunch').onclick=launch}
+async function launch(){const S=[['img','Preparing image'],['upimg','Storing image on Arweave'],['upmeta','Storing token details on Arweave'],['build','Building the pump.fun transaction'],['sign','Waiting for your wallet'],['send','Sending to Solana'],['conf','Confirming on-chain']];
+ $('#mbox').dataset.lock='1';modal(`<h3>Launching $${esc(F.symbol)}</h3><p>Keep this tab open. Your wallet will ask you to approve one transaction.</p><div class="steps">${S.map(([k,l])=>`<div class="st" id="s_${k}"><i></i><div>${l}<small></small></div></div>`).join('')}</div><div id="lres"></div>`);
+ const set=(k,st,note)=>{const el=$('#s_'+k);if(!el)return;el.className='st '+st;el.querySelector('i').textContent=st==='ok'?'✓':st==='bad'?'!':'';if(note!=null)el.querySelector('small').innerHTML=note};
+ let cur='img';try{
+  set('img','run');const im=await imgToSmall();set('img','ok',(im.bytes.length/1024).toFixed(0)+' KB '+im.type.split('/')[1]);
+  cur='upimg';set('upimg','run');const imgUri=await arUpload(im.bytes,im.type);set('upimg','ok',`<a href="${imgUri}" target="_blank" rel="noopener" style="color:var(--acc)">${imgUri.replace('https://','')}</a>`);
+  cur='upmeta';set('upmeta','run');const meta={name:F.name,symbol:F.symbol,description:F.desc,image:imgUri,showName:true,createdOn:SITE,twitter:F.twitter||undefined,telegram:F.telegram||undefined,website:F.website||undefined};
+  const uri=await arUpload(new TextEncoder().encode(JSON.stringify(meta)),'application/json');set('upmeta','ok',`<a href="${uri}" target="_blank" rel="noopener" style="color:var(--acc)">${uri.replace('https://','')}</a>`);
+  cur='build';set('build','run');const Wb=await lib('w3');const mint=Wb.Keypair.generate();const mintAddr=mint.publicKey.toBase58();
+  const r=await fetch(API.pp,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({publicKey:W.pk,action:'create',tokenMetadata:{name:F.name,symbol:F.symbol,uri},mint:mintAddr,denominatedInSol:'true',amount:F.dev,slippage:F.slip,priorityFee:F.prio,pool:'pump'})});
+  if(!r.ok)throw new Error('PumpPortal: '+(await r.text()).slice(0,200));const tx=Wb.VersionedTransaction.deserialize(new Uint8Array(await r.arrayBuffer()));set('build','ok','mint '+short(mintAddr,6));
+  cur='sign';set('sign','run','approve in '+W.name);const signed=await W.provider.signTransaction(tx);signed.sign([mint]);set('sign','ok');
+  cur='send';set('send','run');const sig=await rpc('sendTransaction',[toB64(signed.serialize()),{encoding:'base64',skipPreflight:false,preflightCommitment:'confirmed',maxRetries:5}]);set('send','ok',`<a href="https://solscan.io/tx/${sig}" target="_blank" rel="noopener" style="color:var(--acc)">${short(sig,8)}</a>`);
+  cur='conf';set('conf','run');await confirmSig(sig);set('conf','ok','confirmed');
+  const rec={mint:mintAddr,name:F.name,symbol:F.symbol,image:imgUri,desc:F.desc,sig,t:Date.now(),creator:W.pk,initialBuy:F.dev,uri};const L=store.get('launches',[]);L.unshift(rec);store.set('launches',L.slice(0,100));
+  const o=TOK.get(mintAddr)||{mint:mintAddr};Object.assign(o,rec,{created:rec.t});TOK.set(mintAddr,o);
+  delete $('#mbox').dataset.lock;confetti();bal();
+  $('#lres').innerHTML=`<div class="reslinks"><div class="ca">${mintAddr}<button onclick="navigator.clipboard.writeText('${mintAddr}');toast('Mint address copied.','ok')">Copy</button></div><a class="btn pri" href="#/t/${mintAddr}" onclick="closeModal()">Open your room</a><a class="btn" target="_blank" rel="noopener" href="https://pump.fun/coin/${mintAddr}">View on pump.fun ${icon('ext')}</a><a class="btn" target="_blank" rel="noopener" href="https://x.com/intent/post?text=${encodeURIComponent('$'+F.symbol+' is live. Come join the room: '+SITE+'#/t/'+mintAddr)}">${xlogo} Announce on X</a></div>`;
+  F.name='';F.symbol='';F.desc='';F.twitter='';F.telegram='';F.website='';store.set('draft',F);IMG=null}
+ catch(e){set(cur,'bad',esc(e.message||String(e)));delete $('#mbox').dataset.lock;$('#lres').innerHTML=`<p style="margin-top:10px">${cur==='sign'?'The transaction was not approved, so nothing was launched.':cur==='conf'?'It was sent but not confirmed yet. Check the Solscan link above before trying again.':'Nothing was launched.'}</p><button class="btn" style="width:100%;margin-top:12px" onclick="closeModal()">Close</button>`}}
+
+/* ======================= TOKEN ROOM ======================= */
+let tradeSide='buy';
+async function vRoom(v){const m=route.arg;if(!m||!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(m)){v.innerHTML=head('ROOM')+'<div class="err">That isn\'t a valid Solana mint address.</div>';return}
+ let t=TOK.get(m)||{mint:m};v.innerHTML=head('ROOM')+`<div id="rh"></div><div class="chart" id="chart"><div class="none">Loading chart…</div></div>
+ <div class="rg2"><div><h4>TRADE</h4><div class="bs"><button class="b ${tradeSide==='buy'?'on':''}" data-sd="buy">Buy</button><button class="s ${tradeSide==='sell'?'on':''}" data-sd="sell">Sell</button></div><div class="pre" id="tpre"></div><input class="in mono" id="tAmt" type="number" min="0" step="0.01" value="${tradeSide==='buy'?'0.1':'50'}"><p class="note" id="tNote" style="margin:8px 0 10px"></p><button class="btn ${tradeSide==='buy'?'buy':'sell'}" id="tGo" style="width:100%"></button></div>
+ <div><h4>LIVE TRADES</h4><div class="trades" id="trades"><div class="empty" style="padding:14px">Listening for trades on this token…</div></div></div></div>
+ <div class="rg2"><div class="compose"><h4>POST TO X</h4><textarea id="pTxt" maxlength="260"></textarea><div class="row"><small id="pCnt"></small><button class="btn pri" id="pGo">${xlogo} Post on X</button></div><p class="note" style="margin-top:8px">Opens X with your post ready to send. It goes out from your own X account.</p></div>
+ <div><h4>MENTIONS</h4><p class="note" style="margin-bottom:10px">Everything people are saying about this token on X, newest first.</p><div class="acts"><a class="ab pri" id="mLatest" target="_blank" rel="noopener">${xlogo} Latest mentions</a><a class="ab" id="mTop" target="_blank" rel="noopener">Top posts</a><a class="ab" id="mCa" target="_blank" rel="noopener">CA mentions</a></div><div id="links" class="acts" style="margin-top:12px"></div></div></div>`;
+ const paintHead=()=>{const fol=store.get('follow',[]).includes(m);const mine=store.get('launches',[]).some(l=>l.mint===m);
+  $('#rh').innerHTML=`<div class="room-h">${av(t.image,t.symbol)}<div style="min-width:0"><h2>${esc(t.name||'Unknown token')} ${mine?'<span class="badge mine" style="font-size:10px;vertical-align:middle">your launch</span>':''}</h2><small>$${esc(t.symbol||'?')} · ${short(m,5)} <a href="#" id="cpy" style="color:var(--acc)">copy</a></small></div><div class="px"><b>${t.mcapUsd?usd(t.mcapUsd):t.mcapSol?t.mcapSol.toFixed(1)+' SOL':'—'}</b><span class="${t.ch24==null?'':t.ch24>=0?'up':'dn'}" style="${t.ch24==null?'color:var(--mut)':''}">${t.ch24!=null?pct(t.ch24)+' 24h':'market cap'}</span></div></div>
+  <div class="kvs"><div>Price<b>${t.priceUsd?'$'+t.priceUsd.toPrecision(4):'—'}</b></div><div>24h volume<b>${usd(t.vol24)}</b></div><div>Liquidity<b>${usd(t.liq)}</b></div><div>Listed<b>${t.created?ago(t.created)+' ago':'—'}</b></div></div>
+  <div class="acts" style="padding:12px 20px;border-bottom:1px solid var(--line)"><button class="ab ${fol?'on':''}" id="fol">${icon('star')}${fol?'Following':'Follow'}</button><a class="ab" target="_blank" rel="noopener" href="https://pump.fun/coin/${m}">pump.fun ${icon('ext')}</a><a class="ab" target="_blank" rel="noopener" href="https://dexscreener.com/solana/${m}">DexScreener ${icon('ext')}</a><a class="ab" target="_blank" rel="noopener" href="https://solscan.io/token/${m}">Solscan ${icon('ext')}</a></div>`;
+  $('#cpy').onclick=e=>{e.preventDefault();navigator.clipboard?.writeText(m);toast('Mint address copied.','ok')};$('#fol').onclick=()=>{toggleFollow(m);paintHead()};
+  const tk=t.symbol?'$'+t.symbol:m;$('#mLatest').href=`https://x.com/search?q=${encodeURIComponent(tk)}&f=live`;$('#mTop').href=`https://x.com/search?q=${encodeURIComponent(tk)}`;$('#mCa').href=`https://x.com/search?q=${encodeURIComponent(m)}&f=live`;
+  $('#links').innerHTML=(t.links||[]).filter(Boolean).slice(0,4).map(u=>`<a class="ab" target="_blank" rel="noopener" href="${esc(u)}">${esc(u.replace(/^https?:\/\/(www\.)?/,'').slice(0,28))} ${icon('ext')}</a>`).join('');
+  if(!$('#pTxt').dataset.touched){$('#pTxt').value=`${t.symbol?'$'+t.symbol:'This token'} room is open. Live chart and trades: ${SITE}#/t/${m}`;$('#pCnt').textContent=$('#pTxt').value.length+'/260'}};
+ paintHead();
+ try{const ps=await pairsFor([m]);if(ps[0])t=ps[0]}catch(e){}
+ if(!t.name){const L=store.get('launches',[]).find(l=>l.mint===m);if(L)Object.assign(t,L,{created:L.t})}
+ if(route.arg!==m)return;paintHead();
+ const ch=$('#chart');ch.innerHTML=t.pair?`<iframe title="Chart" src="https://dexscreener.com/solana/${t.pair}?embed=1&loadChartSettings=0&trades=0&tabs=0&info=0&chartLeftToolbar=0&chartTheme=dark&theme=dark&chartStyle=1&chartType=usd&interval=1" loading="lazy"></iframe>`:`<div class="none"><b style="color:var(--ink);font-family:var(--disp)">CHART WARMING UP</b>DexScreener lists new pump.fun tokens after their first trades. Until then the live trades below come straight from the chain, and pump.fun has the curve.<a class="ab pri" target="_blank" rel="noopener" href="https://pump.fun/coin/${m}">Open on pump.fun ${icon('ext')}</a></div>`;
+ // trades
+ const tr=$('#trades');let n=0;wsTrades(m,d=>{if(!tr.isConnected)return;if(!n)tr.innerHTML='';n++;const b=d.txType==='buy';tr.insertAdjacentHTML('afterbegin',`<div class="new"><span class="${b?'up':'dn'}">${b?'BUY':'SELL'}</span><span>${(+d.solAmount).toFixed(3)} SOL · ${short(d.traderPublicKey)}</span><a href="https://solscan.io/tx/${d.signature}" target="_blank" rel="noopener" style="color:var(--mut)">${new Date().toTimeString().slice(0,8)}</a></div>`);while(tr.children.length>80)tr.lastElementChild.remove();if(d.marketCapSol){t.mcapSol=d.marketCapSol}});
+ // trade box
+ const paintTrade=()=>{const b=tradeSide==='buy';$$('.bs button').forEach(x=>x.classList.toggle('on',x.dataset.sd===tradeSide));$('#tpre').innerHTML=(b?['0.05','0.1','0.5','1']:['25','50','100']).map(x=>`<button data-v="${x}">${b?x+' SOL':x+'%'}</button>`).join('');$$('#tpre button').forEach(x=>x.onclick=()=>{$('#tAmt').value=x.dataset.v;note()});
+  $('#tGo').className='btn '+(b?'buy':'sell');$('#tGo').textContent=W?(b?'Buy':'Sell')+' $'+(t.symbol||'token'):'Sign in to trade';note()};
+ const note=()=>{const a=+$('#tAmt').value||0;$('#tNote').innerHTML=tradeSide==='buy'?`Spend <b>${a} SOL</b>${SOLUSD?` (${usd(a*SOLUSD)})`:''}. Routed by PumpPortal (pump.fun curve or its pool), 0.5% PumpPortal fee, 15% slippage.`:`Sell <b>${clamp(a,0,100)}%</b> of your $${esc(t.symbol||'')} balance. 0.5% PumpPortal fee, 15% slippage.`};
+ $$('.bs button').forEach(x=>x.onclick=()=>{tradeSide=x.dataset.sd;$('#tAmt').value=tradeSide==='buy'?'0.1':'50';paintTrade()});$('#tAmt').oninput=note;
+ $('#tGo').onclick=()=>need(async()=>{paintTrade();const a=+$('#tAmt').value||0;if(a<=0)return toast('Enter an amount.','bad');const b=tradeSide==='buy';if(b&&BAL!=null&&a>BAL)return toast(`You only have ${BAL.toFixed(3)} SOL.`,'bad');
+  const btn=$('#tGo');btn.disabled=true;btn.textContent='Building transaction…';try{const Wb=await lib('w3');
+   const r=await fetch(API.pp,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({publicKey:W.pk,action:b?'buy':'sell',mint:m,amount:b?a:clamp(a,1,100)+'%',denominatedInSol:b?'true':'false',slippage:15,priorityFee:0.0005,pool:'auto'})});
+   if(!r.ok)throw new Error((await r.text()).slice(0,180)||'PumpPortal could not build this trade.');const tx=Wb.VersionedTransaction.deserialize(new Uint8Array(await r.arrayBuffer()));
+   btn.textContent='Approve in your wallet…';const sig=await signSend(tx);btn.textContent='Confirming…';toast(`Sent. <a href="https://solscan.io/tx/${sig}" target="_blank" rel="noopener">View on Solscan</a>`);await confirmSig(sig);toast(`${b?'Bought':'Sold'} $${esc(t.symbol||'')}. <a href="https://solscan.io/tx/${sig}" target="_blank" rel="noopener">Receipt</a>`,'ok');bal()}
+  catch(e){toast(esc(e.message||'Trade failed.'),'bad')}btn.disabled=false;paintTrade()});
+ $('#pTxt').oninput=e=>{e.target.dataset.touched=1;$('#pCnt').textContent=e.target.value.length+'/260'};$('#pGo').onclick=()=>{window.open('https://x.com/intent/post?text='+encodeURIComponent($('#pTxt').value),'_blank','noopener')};
+ paintTrade()}
+
+/* ======================= PROFILE ======================= */
+async function vMe(v){if(!W){v.innerHTML=head('PROFILE')+`<div class="empty" style="padding:60px 24px"><b>Sign in to see your profile.</b><br>Your wallet, your launches and the tokens you follow.<br><br><button class="btn pri" onclick="openWallet()">Sign in with wallet</button></div>`;return}
+ const L=store.get('launches',[]).filter(l=>!l.creator||l.creator===W.pk);v.innerHTML=head('PROFILE')+`<div class="room-h">${av(null,W.pk)}<div><h2 style="font-size:18px">${short(W.pk,6)}</h2><small>${W.name} · signed in with a wallet signature</small></div><div class="px"><b>${BAL==null?'—':BAL.toFixed(4)+' SOL'}</b><span style="color:var(--mut)">${BAL!=null&&SOLUSD?usd(BAL*SOLUSD):''}</span></div></div>
+ <div class="acts" style="padding:12px 20px;border-bottom:1px solid var(--line)"><a class="ab" target="_blank" rel="noopener" href="https://solscan.io/account/${W.pk}">Solscan ${icon('ext')}</a><a class="ab" target="_blank" rel="noopener" href="https://pump.fun/profile/${W.pk}">pump.fun profile ${icon('ext')}</a><button class="ab" onclick="navigator.clipboard?.writeText('${W.pk}');toast('Address copied.','ok')">Copy address</button><button class="ab" onclick="signOut()">Sign out</button></div>
+ <div class="sec-h"><h2>YOUR LAUNCHES</h2><a href="#/launch">Launch another</a></div><div id="ml">${L.length?L.map(l=>postCard({...l,created:l.t})).join(''):'<div class="empty">No launches from this browser yet.</div>'}</div>`;bindPosts();bal()}
+
+/* ======================= DOCS ======================= */
+function vDocs(v){v.innerHTML=head('DOCS')+`<div class="doc">
+ <p>TAGGED is a home for Solana tokens and the people around them. Every token gets a room with a live chart, live trades, a quick way to trade and a one-tap way to talk about it on X.</p>
+ <h3>SIGNING IN</h3><p>You sign in with a Solana wallet (Phantom, Solflare or Backpack). After connecting, you sign a short text message. That signature proves the wallet is yours; it costs nothing and can't move funds. Nothing is stored on a server: your session lives in this browser.</p>
+ <h3>LAUNCHING A TOKEN</h3><ul><li>Your image (compressed under 100&nbsp;KB) and token details are stored permanently on <b>Arweave</b> through ArDrive Turbo, free at that size.</li><li><b>PumpPortal</b> builds a pump.fun <code>create</code> transaction. A new mint keypair is generated in your browser and co-signs it.</li><li>You approve one transaction in your wallet. It's sent to Solana and confirmed, and your token is live on pump.fun's bonding curve.</li><li>Costs: about 0.02 SOL in network rent and fees, plus any developer buy. PumpPortal charges 0.5% of trades it builds, including the developer buy. TAGGED adds no fee.</li></ul>
+ <h3>TRADING</h3><p>Buys and sells in a room are built by PumpPortal (<code>pool: auto</code>, so pump.fun's curve before graduation and its AMM after) and signed by your wallet. 15% slippage, 0.0005 SOL priority fee.</p>
+ <h3>WHERE THE DATA COMES FROM</h3><ul><li><b>Live launches and trades:</b> PumpPortal's public websocket, straight from the chain.</li><li><b>Trending, leaderboard, search and charts:</b> DexScreener.</li><li><b>SOL price:</b> Jupiter. <b>Balances and transaction sending:</b> a public Solana RPC.</li></ul>
+ <h3>POSTING TO X</h3><p>Posts open X's own composer with your text ready, and you send them from your account. The Mentions buttons open X search for the token's ticker and contract address.</p>
+ <h3>RISK</h3><p>Memecoins are extremely risky and most go to zero. Launching or trading here uses real funds from your wallet. Nothing on TAGGED is financial advice.</p></div>`}
+
+/* ======================= boot ======================= */
+$('#sform').onsubmit=e=>{e.preventDefault();const s=$('#sq').value.trim();if(!s)return;if(/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(s))go('/t/'+s);else go('/explore/'+encodeURIComponent(s));$('#sq').value=''};
+route=parse();render();wsConnect();solPrice();setInterval(solPrice,60000);paintSide();setInterval(()=>{TOP_T=0;paintSide()},90000);setInterval(paintJust,10000);setInterval(bal,30000);
+setTimeout(restore,400);
+</script>
+</body>
+</html>
